@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: priya-whatsapp-bot
+    env: node
+    plan: free
+    rootDir: bot
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: FIREBASE_SDK_BASE64
+        sync: false
+      - key: OWNER_IDS
+        sync: false
+      - key: AI_URL
+        value: https://gpt5-9oce.onrender.com/ask

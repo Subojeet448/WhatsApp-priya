@@ -72,7 +72,10 @@ export async function getSettings() {
     prompt: data.prompt || DEFAULT_PROMPT,
     delaySec: typeof data.delaySec === "number" ? data.delaySec : 5,
     waitSec: typeof data.waitSec === "number" ? data.waitSec : 6,
+    enabled: data.enabled !== false,
     panelChatId: data.panelChatId || null,
+    stickers: Array.isArray(data.stickers) ? data.stickers : [],
+    human: data.human !== false, // read-gap, rhythm, mood, typos, stickers
     ...data,
   };
 }
@@ -93,6 +96,10 @@ export async function getChat(jid) {
     name: data.name || null,
     gender: data.gender || null,
     lastAt: data.lastAt || 0,
+    mood: data.mood || null,
+    moodDay: data.moodDay || null,
+    missedAt: data.missedAt || 0,
+    notes: Array.isArray(data.notes) ? data.notes : [],
     history: Array.isArray(data.history) ? data.history : [],
   };
 }

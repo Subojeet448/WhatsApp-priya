@@ -28,6 +28,9 @@ const statusLine = () => {
   return "🔴 Disconnected";
 };
 
+let replyOn = true; // cached for menu rendering
+let humanOn = true; // read-gap, mood, typos, stickers
+
 function mainMenu() {
   const connected = wa.status === "connected";
   const rows = [
@@ -38,7 +41,18 @@ function mainMenu() {
     ],
     [Markup.button.callback("🧠 Prompt", "prompt"), Markup.button.callback("💬 Chat", "chats:0")],
     [Markup.button.callback("⏱ Delay", "delay"), Markup.button.callback("💾 Backup / Upload", "backup")],
+    [
+      Markup.button.callback("🩹 Sticker", "stk"),
+      humanOn
+        ? Markup.button.callback("🧍 Human: ON", "human:off")
+        : Markup.button.callback("🤖 Human: OFF", "human:on"),
+    ],
   ];
+  rows.push([
+    replyOn
+      ? Markup.button.callback("🟢 Reply: ON (band karo)", "toggle:off")
+      : Markup.button.callback("🔴 Reply: OFF (chalu karo)", "toggle:on"),
+  ]);
   if (connected) rows.push([Markup.button.callback("🚪 Logout", "logout")]);
   rows.push([Markup.button.callback("🔄 Refresh", "home")]);
   return Markup.inlineKeyboard(rows);
@@ -48,10 +62,13 @@ const backBtn = (target = "home") =>
   Markup.inlineKeyboard([[Markup.button.callback("⬅️ Back", target)]]);
 
 const homeText = () =>
-  `*Priya Control Panel* 😎\n\nStatus: ${statusLine()}\n\nNeeche button se sab control karo.`;
+  `*Priya Control Panel* 😎\n\nStatus: ${statusLine()}\nReply: ${replyOn ? "ON" : "OFF"}\nHuman mode: ${humanOn ? "ON" : "OFF"}\n\nNeeche button se sab control karo.`;
 
 async function showHome(ctx, edit = false) {
   clearStep(ctx.chat.id);
+  const s = await getSettings();
+  replyOn = s.enabled !== false;
+  humanOn = s.human !== false;
   const payload = [homeText(), { parse_mode: "Markdown", ...mainMenu() }];
   if (edit && ctx.callbackQuery) {
     await ctx.editMessageText(...payload).catch(() => ctx.reply(...payload));
@@ -78,6 +95,37 @@ export function createBot() {
   bot.action("home", async (ctx) => {
     await ctx.answerCbQuery();
     await showHome(ctx, true);
+  });
+
+  bot.action(/^toggle:(on|off)$/, async (ctx) => {
+    const on = ctx.match[1] === "on";
+    await saveSettings({ enabled: on });
+    replyOn = on;
+    await ctx.answerCbQuery(on ? "Reply ON" : "Reply OFF");
+    await showHome(ctx, true);
+  });
+
+  bot.action(/^human:(on|off)$/, async (ctx) => {
+    const on = ctx.match[1] === "on";
+    await saveSettings({ human: on });
+    humanOn = on;
+    await ctx.answerCbQuery(on ? "Human mode ON" : "Human mode OFF");
+    await showHome(ctx, true);
+  });
+
+  /* ------------------------------ stickers ----------------------------- */
+
+  bot.action("stk", async (ctx) => {
+    await ctx.answerCbQuery();
+    const { stickers } = await getSettings();
+    setStep(ctx.chat.id, "await_sticker");
+    const list = stickers.length
+      ? stickers.map((u, i) => `${i + 1}. ${u}`).join("\n")
+      : "_koi sticker nahi hai_";
+    await ctx.editMessageText(
+      `🩹 *Stickers*\n\n${list}\n\nNaya sticker add karne ke liye \`.webp\` ka link bhejo (ek line me ek).\nHatane ke liye bhejo: \`del 2\`  |  sab hatao: \`clear\``,
+      { parse_mode: "Markdown", ...backBtn() },
+    );
   });
 
   bot.action("status", async (ctx) => {
@@ -314,6 +362,31 @@ export function createBot() {
         await ctx.reply(`❌ ${e.message}`, mainMenu());
       }
       return;
+    }
+
+    if (step.step === "await_sticker") {
+      const cur = (await getSettings()).stickers;
+      if (/^clear$/i.test(text)) {
+        await saveSettings({ stickers: [] });
+        clearStep(ctx.chat.id);
+        return ctx.reply("✅ Saare stickers hata diye.", mainMenu());
+      }
+      const del = text.match(/^del\s+(\d+)$/i);
+      if (del) {
+        const idx = Number(del[1]) - 1;
+        const next = cur.filter((_, i) => i !== idx);
+        await saveSettings({ stickers: next });
+        clearStep(ctx.chat.id);
+        return ctx.reply(`✅ Sticker hata diya (${next.length} bache).`, mainMenu());
+      }
+      const urls = text
+        .split(/\s+/)
+        .filter((u) => /^https?:\/\/\S+$/i.test(u));
+      if (!urls.length) return ctx.reply("❌ Sticker ka link (https://...webp) bhejo.");
+      const next = [...new Set([...cur, ...urls])].slice(0, 30);
+      await saveSettings({ stickers: next });
+      clearStep(ctx.chat.id);
+      return ctx.reply(`✅ Sticker add ho gaya (total ${next.length}).`, mainMenu());
     }
 
     if (step.step === "await_prompt") {
